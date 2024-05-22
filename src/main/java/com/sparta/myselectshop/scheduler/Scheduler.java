@@ -23,7 +23,7 @@ public class Scheduler {
 	private final ProductRepository productRepository;
 
 	// 초, 분, 시, 일, 월, 주 순서
-	@Scheduled(cron = "*/10 * * * * *") // 매일 새벽 1시 cron 운영체제에서 특정시간마자 특정작업을 수행하는 기능
+	@Scheduled(cron = "* * 1 * * *") // 매일 새벽 1시 cron 운영체제에서 특정시간마자 특정작업을 수행하는 기능
 	public void updatePrice() throws InterruptedException {
 		log.info("가격 업데이트 실행");
 		List<Product> productList = productRepository.findAll();
