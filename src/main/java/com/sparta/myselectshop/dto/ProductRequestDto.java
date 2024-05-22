@@ -20,5 +20,9 @@ public class ProductRequestDto {
 	private int lprice;
 
 	public ProductRequestDto(Product product) {
+		this.title = product.getTitle();
+		this.image = product.getImage();
+		this.link = product.getLink();
+		this.lprice = product.getLprice();
 	}
 }
