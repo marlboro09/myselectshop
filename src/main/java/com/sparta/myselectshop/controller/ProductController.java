@@ -25,7 +25,7 @@ public class ProductController {
 	private final ProductService productService;
 
 	@PostMapping("/products")
-	public ProductRequestDto createProduct(@RequestBody ProductRequestDto requestDto) {
+	public ProductResponseDto createProduct(@RequestBody ProductRequestDto requestDto) {
 		return productService.createProduct(requestDto);
 	}
 
@@ -34,8 +34,8 @@ public class ProductController {
 		return productService.updateProduct(id, requestDto);
 	}
 
-	@GetMapping("/products")
-	public List<ProductResponseDto> getProducts() {
-		return productService.getProducts();
-	}
+// 	@GetMapping("/products")
+// 	public List<ProductResponseDto> getProducts() {
+// 		return productService.getProducts();
+// 	}
 }

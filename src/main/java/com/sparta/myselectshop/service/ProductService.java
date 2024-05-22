@@ -23,9 +23,9 @@ public class ProductService {
 
 	public static final int MIN_MY_PRICE = 100;
 
-	public ProductRequestDto createProduct(ProductRequestDto requestDto) {
+	public ProductResponseDto createProduct(ProductRequestDto requestDto) {
 		Product product = productRepository.save(new Product(requestDto));
-		return new ProductRequestDto(product);
+		return new ProductResponseDto(product);
 	}
 
 	@Transactional
