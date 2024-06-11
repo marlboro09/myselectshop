@@ -1,6 +1,7 @@
 package com.sparta.myselectshop.service;
 
 import java.net.URI;
+import java.util.UUID;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.RequestEntity;
@@ -16,6 +17,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sparta.myselectshop.dto.KakaoUserInfoDto;
+import com.sparta.myselectshop.entity.User;
+import com.sparta.myselectshop.entity.UserRoleEnum;
 import com.sparta.myselectshop.jwt.JwtUtil;
 import com.sparta.myselectshop.repository.UserRepository;
 
@@ -29,22 +32,30 @@ public class KakaoService {
 
 	private final PasswordEncoder passwordEncoder;
 	private final UserRepository userRepository;
-	private final RestTemplate restTemplate; //추가적인 설정을 해준 restemplate
+	private final RestTemplate restTemplate;
 	private final JwtUtil jwtUtil;
 
 	public String kakaoLogin(String code) throws JsonProcessingException {
 		//1. "인가 코드"로 "엑세스 토큰" 요청
 		String accessToken = getToken(code);
 
-		//2. 토큰으로 카카오 API 호출 : "엑세스 토큰"으로 "카카오 사용자 정보" 가져오기
-		KakaoUserInfoDto kakaoUserInfo =  getKakaoUserInfo(accessToken);
+		// 토큰이 null인지 확인
+		if (accessToken == null || accessToken.isEmpty()) {
+			log.error("Failed to get access token from Kakao");
+			throw new IllegalArgumentException("Access token is null or empty");
+		}
 
-		return null;
+		//2. 토큰으로 카카오 API 호출 : "엑세스 토큰"으로 "카카오 사용자 정보" 가져오기
+		KakaoUserInfoDto kakaoUserInfo = getKakaoUserInfo(accessToken);
+
+		//3. 필요시에 회원가입
+		User kakaoUser = registerKakaoUserIfNeeded(kakaoUserInfo);
+
+		//4. JWT 토큰 반환
+		return jwtUtil.createToken(kakaoUser.getUsername(), kakaoUser.getRole());
 	}
 
 	private String getToken(String code) throws JsonProcessingException {
-		log.info("인가코드 : " + code);
-		// 요청 URL 만들기
 		URI uri = UriComponentsBuilder
 			.fromUriString("https://kauth.kakao.com")
 			.path("/oauth/token")
@@ -52,11 +63,9 @@ public class KakaoService {
 			.build()
 			.toUri();
 
-		// HTTP Header 생성
 		HttpHeaders headers = new HttpHeaders();
 		headers.add("Content-type", "application/x-www-form-urlencoded;charset=utf-8");
 
-		// HTTP Body 생성
 		MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
 		body.add("grant_type", "authorization_code");
 		body.add("client_id", "cd64bef7b9a28baab7c09d51663003ff");
@@ -68,21 +77,16 @@ public class KakaoService {
 			.headers(headers)
 			.body(body);
 
-		// HTTP 요청 보내기
 		ResponseEntity<String> response = restTemplate.exchange(
 			requestEntity,
 			String.class
 		);
 
-		// HTTP 응답 (JSON) -> 액세스 토큰 파싱
 		JsonNode jsonNode = new ObjectMapper().readTree(response.getBody());
 		return jsonNode.get("access_token").asText();
 	}
 
 	private KakaoUserInfoDto getKakaoUserInfo(String accessToken) throws JsonProcessingException {
-		log.info(accessToken);
-
-		// 요청 URL 만들기
 		URI uri = UriComponentsBuilder
 			.fromUriString("https://kapi.kakao.com")
 			.path("/v2/user/me")
@@ -90,7 +94,6 @@ public class KakaoService {
 			.build()
 			.toUri();
 
-		// HTTP Header 생성
 		HttpHeaders headers = new HttpHeaders();
 		headers.add("Authorization", "Bearer " + accessToken);
 		headers.add("Content-type", "application/x-www-form-urlencoded;charset=utf-8");
@@ -100,7 +103,6 @@ public class KakaoService {
 			.headers(headers)
 			.body(new LinkedMultiValueMap<>());
 
-		// HTTP 요청 보내기
 		ResponseEntity<String> response = restTemplate.exchange(
 			requestEntity,
 			String.class
@@ -108,12 +110,32 @@ public class KakaoService {
 
 		JsonNode jsonNode = new ObjectMapper().readTree(response.getBody());
 		Long id = jsonNode.get("id").asLong();
-		String nickname = jsonNode.get("properties")
-			.get("nickname").asText();
-		String email = jsonNode.get("kakao_account")
-			.get("email").asText();
+		String nickname = jsonNode.get("properties").get("nickname").asText();
+		String email = jsonNode.get("kakao_account").get("email").asText();
 
 		log.info("카카오 사용자 정보: " + id + ", " + nickname + ", " + email);
 		return new KakaoUserInfoDto(id, nickname, email);
+	}
+
+	private User registerKakaoUserIfNeeded(KakaoUserInfoDto kakaoUserInfo) {
+		Long kakaoId = kakaoUserInfo.getId();
+		User kakaoUser = userRepository.findByKakaoId(kakaoId).orElse(null);
+
+		if (kakaoUser == null) {
+			String kakaoEmail = kakaoUserInfo.getEmail();
+			User sameEmailUser = userRepository.findByEmail(kakaoEmail).orElse(null);
+			if (sameEmailUser != null) {
+				kakaoUser = sameEmailUser;
+				kakaoUser = kakaoUser.kakaoIdUpdate(kakaoId);
+			} else {
+				String password = UUID.randomUUID().toString();
+				String encodedPassword = passwordEncoder.encode(password);
+
+				String email = kakaoUserInfo.getEmail();
+				kakaoUser = new User(kakaoUserInfo.getNickname(), encodedPassword, email, UserRoleEnum.USER, kakaoId);
+			}
+			userRepository.save(kakaoUser);
+		}
+		return kakaoUser;
 	}
 }
